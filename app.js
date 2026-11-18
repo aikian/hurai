@@ -58,7 +58,6 @@ const nav = {
   employees: ["users", "직원 관리"],
   sales: ["chart", "매출·수요 분석"],
   insight: ["bulb", "운영 개선"],
-  guide: ["book", "멘토링 가이드"],
 };
 function save() {
   try {
@@ -137,7 +136,6 @@ function render() {
       )
       .join("") +
     "<footer>" +
-    btn(ic("book") + "멘토링 가이드", "go(\'guide\')", "nav") +
     '<div class="profile"><b>점</b><div>점주 워크스페이스<small>예시 매장 · 로컬 저장</small></div></div></footer>';
   $("#top").innerHTML =
     "<div>" +
@@ -162,7 +160,6 @@ function render() {
     employees: "직원별 업무 역량과 근무 가능 조건을 관리하세요.",
     sales: "요일별 매출 패턴으로 시간대별 필요 인력을 확인하세요.",
     insight: "현장 피드백과 배치 기록을 다음 편성에 반영하세요.",
-    guide: "3회차 현장 멘토링에서 검증할 설계와 가설입니다.",
   };
   $("#main").innerHTML =
     '<div class="pagehead"><div><h1>' +
@@ -178,8 +175,6 @@ function render() {
         ? employees()
         : page === "sales"
           ? salesPage()
-          : page === "guide"
-            ? guide()
             : insights(problems));
 }
 function dashboard(g, problems) {
@@ -852,37 +847,6 @@ function addFeedback(f) {
   save();
   render();
   toast("익명 피드백을 기록했습니다.");
-}
-function guide() {
-  return (
-    '<section class="panel"><div class="panelhead"><h2>현장 멘토 질문과 답변</h2></div>' +
-    [
-      [
-        "복잡한 편성 조건에 OR-Tools가 적합할까요?",
-        "네. CP-SAT의 직원 × 일자 × 교대 × 업무 배정 변수를 사용하고, 업무 자격·가용시간·검증된 근로 규정은 필수 제약으로 둡니다. 희망 시간, 형평성, 인건비는 우선순위를 주어 평가합니다. 충원이 어려운 구간은 미배치로 표시하고 관리자에게 필요한 업무와 인원수를 제시합니다. 현재 화면은 브라우저에서 여러 배치 순서를 비교하는 휴리스틱을 사용합니다.",
-      ],
-      [
-        "매출·주문·예약으로 적정 인원을 어떻게 구할까요?",
-        "30분 단위로 방문 인원, 주문 메뉴, 예약 인원, 실제 투입 인원과 대기시간을 맞춥니다. 홀은 테이블 회전, 그릴은 구이 주문, 주방은 메뉴별 조리시간을 기준으로 업무량을 추정합니다. 동일 요일 중앙값을 기준선으로 삼고 최근 주를 검증용으로 남겨 과소 예측과 피크 대기시간을 비교합니다. 매출 제공이 어려우면 익명 주문 건수와 방문 인원으로 시작합니다.",
-      ],
-      [
-        "직원 피드백을 다음 주 근무표에 어떻게 반영할까요?",
-        "식별 정보를 제거한 피드백을 생성형 AI로 요일·시간대·업무별로 분류하고, 실제 매출과 배치 기록으로 재확인합니다. 근거가 충분한 제안만 추가 소요 시간 및 비용과 함께 보여줍니다. 관리자 승인값을 다음 편성의 수요 조건으로 전달하고 적용 전후 대기시간, 인건비율, 관리자 수정 횟수를 비교합니다.",
-      ],
-    ]
-      .map(
-        ([q, a], i) =>
-          '<article class="answer"><mark>질문 ' +
-          (i + 1) +
-          "</mark><h2>" +
-          q +
-          "</h2><p>" +
-          a +
-          "</p></article>",
-      )
-      .join("") +
-    "</section>"
-  );
 }
 page = nav[location.hash.slice(1)] ? location.hash.slice(1) : "schedule";
 render();
