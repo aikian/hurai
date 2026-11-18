@@ -88,8 +88,14 @@ function go(k) {
   render();
   window.scrollTo(0, 0);
 }
+function currentPage() {
+  const route = location.hash.slice(1);
+  if (Object.hasOwn(nav, route)) return route;
+  if (route) history.replaceState(null, "", "#schedule");
+  return "schedule";
+}
 window.onhashchange = () => {
-  page = nav[location.hash.slice(1)] ? location.hash.slice(1) : "schedule";
+  page = currentPage();
   render();
 };
 function btn(t, fn, cl = "") {
@@ -959,7 +965,7 @@ function addFeedback(f) {
   render();
   toast("익명 피드백을 기록했습니다.");
 }
-page = nav[location.hash.slice(1)] ? location.hash.slice(1) : "schedule";
+page = currentPage();
 render();
 
 discoverStorage();
