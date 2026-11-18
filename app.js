@@ -60,6 +60,7 @@ const nav = {
   insight: ["bulb", "운영 개선"],
 };
 function save() {
+  markChanged();
   try {
     localStorage.setItem(key, JSON.stringify(state));
   } catch {
@@ -122,9 +123,13 @@ function render() {
   $("#side").innerHTML =
     '<div class="brand"><b>' +
     ic("flame") +
-    '</b>HURAI<span>.</span></div><div class="store">' +
+    '</b>HURAI<span>.</span></div><button class="store" onclick="storeSettings()" aria-label="매장 정보 수정">' +
     ic("store") +
-    '<div><strong>후라이 숯불구이</strong><small>대구 본점</small></div></div><small class="navlabel">매장 운영</small>' +
+    "<div><strong>" +
+    esc(state.store?.name || "후라이 숯불구이") +
+    "</strong><small>" +
+    esc(state.store?.branch || "대구 본점") +
+    '</small></div></button><small class="navlabel">매장 운영</small>' +
     Object.entries(nav)
       .slice(0, 4)
       .map(([k, [i, n]]) =>
@@ -136,23 +141,26 @@ function render() {
       )
       .join("") +
     "<footer>" +
-    '<div class="profile"><b>점</b><div>점주 워크스페이스<small>예시 매장 · 로컬 저장</small></div></div></footer>';
+    '<div class="profile"><b>점</b><div>점주 워크스페이스<small>매장 운영 관리자</small></div></div></footer>';
   $("#top").innerHTML =
     "<div>" +
     btn(ic("menu"), "document.body.classList.toggle(\'opened\')", "mobile") +
     ic("layers") +
     " 워크스페이스 <em>/</em> <strong>" +
     nav[page][1] +
-    '</strong></div><span class="saved">● &nbsp; 브라우저 저장</span>';
+    "</strong></div>" +
+    storageButton();
   let dt =
     '<div class="weeknav">' +
     btn("‹", "jump(-1)") +
+    '<button class="datepick" onclick="pickWeek()" aria-label="근무 주 선택">' +
     ic("calendar") +
     week.slice(0, 4) +
     ". " +
     short(week) +
     " – " +
     short(dateAt(week, 6)) +
+    "</button>" +
     btn("›", "jump(1)") +
     "</div>";
   let sub = {
@@ -175,7 +183,7 @@ function render() {
         ? employees()
         : page === "sales"
           ? salesPage()
-            : insights(problems));
+          : insights(problems));
 }
 function dashboard(g, problems) {
   let hours = g.reduce((n, row) => n + row.filter(Boolean).length * 5, 0),
@@ -472,7 +480,64 @@ function generation() {
     toast("편집 재개 후 자동 편성할 수 있습니다.");
     return;
   }
-  let proposal = generate(state, week);
+  modal(
+    "자동 편성 중",
+    '<p role="status">OR-Tools가 직원별 조건과 인력 수요를 계산하고 있습니다.</p><button onclick="dialog.close()">취소</button>',
+  );
+  const dialog = $("#dialog");
+  let worker;
+  try {
+    worker = new Worker(new URL("solver/worker.mjs", document.baseURI), {
+      type: "module",
+    });
+  } catch {
+    dialog.close();
+    toast(
+      "편성 엔진을 시작할 수 없습니다. HTTPS 또는 localhost에서 다시 시도하세요.",
+    );
+    return;
+  }
+  const timer = setTimeout(failed, 30000);
+  function cleanup() {
+    worker.terminate();
+    clearTimeout(timer);
+    dialog.removeEventListener("close", cleanup);
+  }
+  function failed() {
+    cleanup();
+    if (dialog.open) {
+      dialog.close();
+      toast("편성안 계산에 실패했습니다. 기존 일정은 보존되었습니다.");
+    }
+  }
+  dialog.addEventListener("close", cleanup, { once: true });
+  worker.onerror = failed;
+  worker.onmessage = ({ data }) => {
+    cleanup();
+    if (!dialog.open) return;
+    if (!data.grid) {
+      failed();
+      return;
+    }
+    showProposal(data.grid, data.optimal);
+  };
+  const demand = days.map((_, d) =>
+    periods.map((_, p) => roles.map((_, r) => need(state, week, d, p, r))),
+  );
+  worker.postMessage({
+    demand,
+    priority: state.priority,
+    staff: state.staff.map(({ skill, off, available, max, wage, pref }) => ({
+      skill,
+      off,
+      available,
+      max,
+      wage,
+      pref,
+    })),
+  });
+}
+function showProposal(proposal, optimal) {
   let change = proposal.reduce(
     (n, row, i) =>
       n +
@@ -481,17 +546,37 @@ function generation() {
       ).length,
     0,
   );
+  const weekCost = (grid) =>
+    grid.reduce(
+      (total, row, i) =>
+        total + row.filter(Boolean).length * 5 * state.staff[i].wage,
+      0,
+    );
+  const original = current(),
+    targetWeek = week;
   window.applyProposal = () => {
+    if (week !== targetWeek || current() !== original || original.final) {
+      $("#dialog").close();
+      toast("일정이 변경되었습니다. 다시 편성하세요.");
+      return;
+    }
     current().grid = proposal;
     finish("새 편성안을 적용했습니다.");
   };
   modal(
     "자동 편성 결과",
-    '<p>현재 조건으로 만든 편성안을 검토하세요. 적용하면 이 주의 기존 일정을 교체합니다.</p><div class="row">변경되는 근무 칸 <b>' +
+    "<p><b>OR-Tools CP-SAT · " +
+      (optimal ? "최적해 확인" : "제한 시간 내 실행 가능안") +
+      '</b></p><p>현재 조건으로 만든 편성안을 검토하세요. 적용하면 이 주의 기존 일정을 교체합니다.</p><div class="row">변경되는 근무 칸 <b>' +
       change +
       '개</b></div><div class="row">남은 점검 항목 <b>' +
       issues(state, week, proposal).length +
       "건</b></div>" +
+      '<div class="row">예상 기본 인건비<b>' +
+      money(weekCost(original.grid)) +
+      " → " +
+      money(weekCost(proposal)) +
+      "원</b></div>" +
       btn("편성안 적용", "applyProposal()", "primary"),
   );
 }
@@ -592,7 +677,9 @@ function employees() {
   return (
     '<section class="panel"><div class="panelhead"><h2>직원 명단 <mark>' +
     state.staff.length +
-    '명</mark></h2></div><div class="staffgrid">' +
+    "명</mark></h2>" +
+    btn("직원 등록", "employee(state.staff.length)", "primary") +
+    '</div><div class="staffgrid">' +
     state.staff
       .map((e, i) =>
         btn(
@@ -632,12 +719,22 @@ function options(list, sel) {
     .join("");
 }
 function employee(i) {
-  let e = state.staff[i];
+  const e = state.staff[i] || {
+    name: "",
+    skill: [0],
+    max: 30,
+    wage: 12000,
+    off: 7,
+    pref: 0,
+    available: 2,
+  };
   modal(
-    e.name + " 근무 조건",
+    e.name ? esc(e.name) + " 근무 조건" : "직원 등록",
     '<form onsubmit="event.preventDefault();updateEmployee(' +
       i +
-      ',this)"><label>가능 업무</label><div class="checks">' +
+      ',this)"><label>직원 이름<input required maxlength="30" name="displayName" value="' +
+      esc(e.name) +
+      '"></label><label>가능 업무</label><div class="checks">' +
       roles
         .map(
           (r, j) =>
@@ -671,7 +768,21 @@ function updateEmployee(i, f) {
     toast("가능 업무를 하나 이상 선택하세요.");
     return;
   }
+  const name = f.elements.displayName.value.trim();
+  if (!/^[\p{L}\p{N}][\p{L}\p{N} .·-]{0,29}$/u.test(name)) {
+    toast("이름은 글자나 숫자로 시작하는 30자 이내로 입력하세요.");
+    return;
+  }
+  if (i === state.staff.length) {
+    if (i >= 80) {
+      toast("직원은 최대 80명까지 등록할 수 있습니다.");
+      return;
+    }
+    state.staff.push({});
+    Object.values(state.weeks).forEach((w) => w.grid.push(Array(7).fill(null)));
+  }
   Object.assign(state.staff[i], {
+    name,
     skill,
     ...Object.fromEntries(
       ["max", "wage", "off", "available", "pref"].map((k) => [
@@ -850,3 +961,37 @@ function addFeedback(f) {
 }
 page = nav[location.hash.slice(1)] ? location.hash.slice(1) : "schedule";
 render();
+
+discoverStorage();
+
+function storeSettings() {
+  modal(
+    "매장 정보",
+    '<form onsubmit="event.preventDefault();saveStore(this)"><label>매장명<input name="storeName" required maxlength="30" value="' +
+      esc(state.store?.name || "후라이 숯불구이") +
+      '"></label><label>지점명<input name="branch" required maxlength="30" value="' +
+      esc(state.store?.branch || "대구 본점") +
+      '"></label><button class="primary">매장 정보 저장</button></form>',
+  );
+}
+function saveStore(f) {
+  const name = f.storeName.value.trim(),
+    branch = f.branch.value.trim();
+  if (!name || !branch) return;
+  state.store = { name, branch };
+  finish("매장 정보를 저장했습니다.");
+}
+function pickWeek() {
+  modal(
+    "근무 주 선택",
+    '<form onsubmit="event.preventDefault();selectDate(this.date.value)"><label>확인할 날짜<input name="date" type="date" required min="2000-01-01" max="2099-12-31" value="' +
+      week +
+      '"></label><button class="primary">해당 주 열기</button></form>',
+  );
+}
+function selectDate(date) {
+  const weekday = new Date(date + "T12:00:00Z").getUTCDay();
+  week = dateAt(date, -((weekday + 6) % 7));
+  $("#dialog").close();
+  render();
+}

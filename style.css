@@ -908,3 +908,53 @@ textarea {
     padding: 14px;
   }
 }
+.storage {
+  font-size: 12px;
+  border-color: #cfc7ef;
+  color: #58439e;
+}
+.storage.saved {
+  color: #23765a;
+}
+.storage.conflict,
+.storage.error {
+  border-color: #d4a653;
+  color: #855900;
+}
+.modalhead + p + .primary,
+dialog button + button {
+  margin-left: 5px;
+}
+#toast {
+  pointer-events: none;
+}
+dialog:open ~ #toast.show {
+  display: block;
+}
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+.store {
+  text-align: left;
+}
+.store strong,
+.store small {
+  overflow-wrap: anywhere;
+}
+.weeknav .datepick {
+  font: inherit;
+  padding: 5px 1px;
+}
+.datepick svg {
+  margin-right: 7px;
+}
+.primary {
+  min-height: 36px;
+}
+.shift:focus-visible {
+  outline-offset: -2px;
+}
+.panelhead h2 {
+  line-height: 1.4;
+}
